@@ -1,20 +1,11 @@
-# Smartcard PKI
-## Instructions to use two smartcards to create a CA and client cert. As the private keys are stored on the cards, you don't have to be (as) paranoid about their security. 
-
-### Source: http://pki-tutorial.readthedocs.org/en/latest/simple/ for a very basic PKI
+# Create keys & certs for Strongswan VPN server and Android client
 
 ### The details:
-1. On the Client card and the Signing CA card
-
-  ```pkcs15-init -E```
-  
-  ```pkcs15-init --create-pkcs15 -p pkcs15+onepin --pin 1234 --puk 4321```
-
-  ```pkcs15-init -G rsa/2048 -i 01 -a 01 -u sign --pin 1234```
-
-2. create dirs and db
+Create dirs and db
 
   ```mkdir -p ca/signing-ca/db crl certs```
+
+  ```touch ca/signing-ca/private```
   
   ```chmod 700 ca/signing-ca/private```
   
@@ -26,26 +17,23 @@
   
   ```echo 01 > ca/signing-ca/db/signing-ca.crl.srl```
 
-3. with the Signing CA card in the computer...
+Create keys and issue certs
+  ```openssl genpkey -algorithm RSA -out ca_key.pem -pkeyopt rsa_keygen_bits:8192```
 
-  ```openssl req -new -config etc/signing-ca.conf -out ca/signing-ca.csr -key slot_1-id_01 -keyform engine -engine pkcs11```
+  ```openssl genpkey -algorithm RSA -out vpn_server_key.pem -pkeyopt rsa_keygen_bits:8192```
 
-  ```openssl ca -selfsign -config etc/signing-ca.conf -in ca/signing-ca.csr -out ca/signing-ca.crt -keyform engine -engine pkcs11 -keyfile slot_1-id_01 -extensions signing_ca_ext```
+  ```openssl genpkey -algorithm RSA -out phone_key.pem -pkeyopt rsa_keygen_bits:8192```
 
-4. with the Client card in the computer
+  ```openssl req -new -config etc/signing-ca.conf -out ca/signing-ca.csr -key ca_key.pem```
 
-  ```openssl req -new -config etc/email.conf -out certs/me.csr -key slot_1-id_01 -keyform engine -engine pkcs11```
+  ```openssl ca -selfsign -config etc/signing-ca.conf -in ca/signing-ca.csr -out ca/signing-ca.crt -keyfile ca_key.pem -extensions signing_ca_ext```
 
-5. with the Signing CA card back in the computer, issue the client cert
+  ```openssl req -new -config etc/vpn_server.conf -out certs/vpn_server.csr -key vpn_server_key.pem```
 
-  ```openssl ca -config etc/signing-ca.conf -in certs/me.csr -out certs/me.crt -keyfile slot_1-id_01 -keyform engine -engine pkcs11```
+  ```openssl ca -config etc/signing-ca.conf -in certs/vpn_server.csr -out certs/vpn_server.crt -keyfile ca_key.pem```
 
-6. also, why not store the CA cert on the CA card
+  ```openssl req -new -config etc/phone.conf -out certs/phone.csr -key phone_key.pem```
 
-  ```pkcs15-init -X ca/signing-ca.crt -i 01 -a 01 ```
+  ```openssl ca -config etc/signing-ca.conf -in certs/phone.csr -out certs/phone.crt -keyfile ca_key.pem```
 
-7. with the Client card in the reader, store the cert on the card
-
-  ```pkcs15-init -X certs/me.crt -i 01 -a 01```
-
-8. Take a look at the pam_pkcs11 setup instructions and use this instead of a self-signed cert
+  ```openssl pkcs12 -export -out phone-and-ca.pfx -inkey phone_key.pem -in certs/phone.crt -certfile ca/signing-ca.crt```
